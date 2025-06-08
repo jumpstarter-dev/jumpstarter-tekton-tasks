@@ -52,7 +52,7 @@ spec:
 
         drivers:
           allow: []
-          unsafe: True
+          unsafe: true
         EOF
 
         cp ${CONFIG_DIR}/default.yaml $(results.config.path)
