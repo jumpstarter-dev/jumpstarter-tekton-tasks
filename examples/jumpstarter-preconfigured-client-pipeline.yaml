@@ -1,0 +1,71 @@
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+  name: jumpstarter-preconfigured-client-pipeline
+spec:
+  params:
+    - name: client-name
+      default: default
+    - name: exporter-labels
+      type: array
+      default: ["hardware=type1"]
+    - name: lease-timeout
+      default: "3600"
+    - name: lease-duration
+      default: "01:00:00"
+    - name: jmp-jScript
+      default: |
+        j status
+
+  workspaces:
+    - name: jumpstarter-client-secret
+    - name: source
+
+  tasks:
+    - name: get-lease
+      taskRef:
+        name: jumpstarter-get-lease
+      params:
+        - name: client-name
+          value: $(params.client-name)
+        - name: exporter-labels
+          value: $(params.exporter-labels)
+        - name: timeout
+          value: $(params.lease-timeout)
+        - name: lease-duration
+          value: $(params.lease-duration)
+      workspaces:
+        - name: jumpstarter-client-secret
+          workspace: jumpstarter-client-secret
+
+    - name: run-command
+      taskRef:
+        name: jumpstarter-run-command
+      runAfter:
+        - get-lease
+      params:
+        - name: client-name
+          value: $(params.client-name)
+        - name: jmp-lease-id
+          value: $(tasks.get-lease.results.jmp-lease-id)
+        - name: jmp-jScript
+          value: $(params.jmp-jScript)
+      workspaces:
+        - name: jumpstarter-client-secret
+          workspace: jumpstarter-client-secret
+        - name: source
+          workspace: source
+
+    - name: release-lease
+      taskRef:
+        name: jumpstarter-release-lease
+      runAfter:
+        - run-command
+      params:
+        - name: jmp-lease-id
+          value: $(tasks.get-lease.results.jmp-lease-id)
+        - name: client-name
+          value: $(params.client-name)
+      workspaces:
+        - name: jumpstarter-client-secret
+          workspace: jumpstarter-client-secret

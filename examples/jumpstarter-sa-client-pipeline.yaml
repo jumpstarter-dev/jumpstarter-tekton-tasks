@@ -1,0 +1,104 @@
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+  name: jumpstarter-sa-client-pipeline
+spec:
+  params:
+    - name: endpoint
+      default: grpc.jumpstarter.apps.cluster.com:443
+    - name: namespace
+      default: jumpstarter
+    - name: name
+      default: my-client
+    - name: insecure-tls
+      default: "true"
+    - name: tls-ca
+      default: ""
+    - name: exporter-labels
+      type: array
+      default: ["hardware=type2"]
+    - name: lease-timeout
+      default: "3600"
+    - name: lease-duration
+      default: "01:00:00"
+    - name: jmp-jScript
+      default: |
+        j power on
+
+  workspaces:
+    - name: shared-workspace
+
+  tasks:
+    - name: setup-client
+      taskRef:
+        name: jumpstarter-setup-sa-client
+      params:
+        - name: endpoint
+          value: $(params.endpoint)
+        - name: namespace
+          value: $(params.namespace)
+        - name: name
+          value: $(params.name)
+        - name: insecure-tls
+          value: $(params.insecure-tls)
+        - name: tls-ca
+          value: $(params.tls-ca)
+      workspaces:
+        - name: config-dir
+          workspace: shared-workspace
+
+    - name: get-lease
+      taskRef:
+        name: jumpstarter-get-lease
+      runAfter:
+        - setup-client
+      params:
+        - name: client-name
+          value: $(params.name)
+        - name: exporter-labels
+          value: $(params.exporter-labels)
+        - name: timeout
+          value: $(params.lease-timeout)
+        - name: lease-duration
+          value: $(params.lease-duration)
+        - name: client-config
+          value: $(tasks.setup-client.results.config)
+      workspaces:
+        - name: jumpstarter-client-secret
+          workspace: shared-workspace
+
+    - name: run-command
+      taskRef:
+        name: jumpstarter-run-command
+      runAfter:
+        - get-lease
+      params:
+        - name: client-name
+          value: $(params.name)
+        - name: jmp-lease-id
+          value: $(tasks.get-lease.results.jmp-lease-id)
+        - name: jmp-jScript
+          value: $(params.jmp-jScript)
+        - name: client-config
+          value: $(tasks.setup-client.results.config)
+      workspaces:
+        - name: jumpstarter-client-secret
+          workspace: shared-workspace
+        - name: source
+          workspace: shared-workspace
+
+    - name: release-lease
+      taskRef:
+        name: jumpstarter-release-lease
+      runAfter:
+        - run-command
+      params:
+        - name: jmp-lease-id
+          value: $(tasks.get-lease.results.jmp-lease-id)
+        - name: client-name
+          value: $(params.name)
+        - name: client-config
+          value: $(tasks.setup-client.results.config)
+      workspaces:
+        - name: jumpstarter-client-secret
+          workspace: shared-workspace
